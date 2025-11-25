@@ -2,6 +2,10 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import altair as alt
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+import json
+from datetime import datetime
 
 # --- SAYFA AYARLARI ---
 st.set_page_config(
@@ -9,6 +13,28 @@ st.set_page_config(
     layout="wide", 
     page_icon="☀️"
 )
+
+# --- VERİTABANI BAĞLANTISI (GOOGLE SHEETS) ---
+def veritabanina_kaydet(ad, tel, email, sehir, fatura, notlar):
+    try:
+        # Sır Odasından (Secrets) anahtarı alıyoruz
+        # json.loads ile string formatındaki anahtarı sözlüğe çeviriyoruz
+        creds_dict = json.loads(st.secrets["gcp_service_account"]["json_file"])
+        
+        scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+        client = gspread.authorize(creds)
+        
+        # Dosyayı aç ve yaz
+        sheet = client.open("SolarMusteriler").sheet1
+        tarih = datetime.now().strftime("%Y-%m-%d %H:%M")
+        
+        # Satır ekle
+        sheet.append_row([tarih, ad, tel, email, sehir, fatura, notlar])
+        return True
+    except Exception as e:
+        st.error(f"Veritabanı Hatası: {e}")
+        return False
 
 # --- YARDIMCI FONKSİYON ---
 def tr_fmt(sayi):
@@ -34,45 +60,35 @@ st.subheader("📝 Hesaplama Parametreleri")
 col_form1, col_form2 = st.columns(2, gap="medium")
 
 with col_form1:
-    st.markdown("#### 🏠 Yerleşim ve Tüketim")
+    st.markdown("#### 🏠 Bina ve Tüketim")
     
-    # 1. KURULUM TİPİ (YENİ)
     kurulum_yeri = st.radio("Kurulum Yeri", ["Çatı Üzeri", "Arazi / Bahçe"], horizontal=True)
     
     sehir = st.selectbox("📍 Şehir Seçiniz", ["İstanbul", "Ankara", "İzmir", "Antalya", "Kayseri", "Konya", "Gaziantep", "Van", "Adana", "Trabzon"])
     fatura = st.number_input("💰 Aylık Elektrik Faturanız (TL)", value=350, step=50)
     
-    # 2. ALAN SORUSU (DİNAMİK METİN)
     alan_etiketi = "🏠 Panel Kurulabilir Net Çatı Alanı (m²)" if kurulum_yeri == "Çatı Üzeri" else "🌱 Kullanılabilir Arazi Alanı (m²)"
     alan_ipucu = "Toplam alanı değil; baca, gölge ve engeller düşüldükten sonra kalan NET alanı giriniz."
-    
     cati_alani = st.number_input(alan_etiketi, value=100, help=alan_ipucu)
-    st.caption(f"ℹ️ *{alan_ipucu}*") # Kullanıcının gözüne sokmak için altına da yazdık
-
-with col_form2:
-    st.markdown("#### ⚙️ Teknik Detaylar")
-    
-    # 3. YÖN SEÇİMİ (AKILLI GİZLEME)
-    if kurulum_yeri == "Çatı Üzeri":
-        yon_secimi = st.selectbox("🧭 Çatınız Hangi Yöne Bakıyor?", ["Güney (En İyi)", "Güney-Doğu (İyi)", "Güney-Batı (İyi)", "Doğu (Orta)", "Batı (Orta)", "Kuzey (Tavsiye Edilmez)"])
-    else:
-        # Arazi ise yön sormaya gerek yok, biz güneye çeviririz.
-        st.success("✅ **Arazi Avantajı:** Paneller arazide otomatik olarak tam **Güney** yönüne bakacak şekilde konumlandırılır. Bu sayede maksimum verim alınır.")
-        yon_secimi = "Güney (En İyi)" # Arka planda Güney seçili olsun
-
-    panel_tipi = st.radio("Panel Kalitesi", ["Ekonomik Panel (Standart)", "Premium Panel (Daha Güçlü)"], horizontal=True)
+    st.caption(f"ℹ️ *{alan_ipucu}*")
     
     st.markdown("#### 🎯 Sistem Hedefi")
     sistem_hedefi = st.radio("Amacınız nedir?", ["Sadece Faturamı Sıfırla (Ekonomik)", "Alanı Doldur & Elektrik Sat (Maksimum Kazanç)"])
 
-# --- ENFLASYON ve BİLGİ NOTU ---
-st.markdown("---")
-c_inf1, c_inf2 = st.columns([1, 1])
-with c_inf1:
+with col_form2:
+    st.markdown("#### ⚙️ Teknik Detaylar")
+    if kurulum_yeri == "Çatı Üzeri":
+        yon_secimi = st.selectbox("🧭 Çatınız Hangi Yöne Bakıyor?", ["Güney (En İyi)", "Güney-Doğu (İyi)", "Güney-Batı (İyi)", "Doğu (Orta)", "Batı (Orta)", "Kuzey (Tavsiye Edilmez)"])
+    else:
+        st.success("✅ **Arazi Avantajı:** Paneller arazide otomatik olarak tam **Güney** yönüne bakacak şekilde konumlandırılır.")
+        yon_secimi = "Güney (En İyi)"
+
+    panel_tipi = st.radio("Panel Kalitesi", ["Ekonomik Panel (Standart)", "Premium Panel (Daha Güçlü)"], horizontal=True)
+    
     st.markdown("#### 📈 Enerji Fiyat Artış Öngörüsü")
     elektrik_zam_beklentisi = st.slider("Yıllık Ort. Artış Beklentisi (%)", 0, 100, 35)
-with c_inf2:
-    st.info("💡 **Referans Bilgi:** Ekim 2025 itibarıyla açıklanan yıllık enflasyon (TÜFE) **%32,87** seviyesindedir. Hesaplamalarınızda bu oranı referans alabilirsiniz.")
+    
+    st.info("💡 **Referans Bilgi:** Ekim 2025 itibarıyla açıklanan yıllık enflasyon (TÜFE) **%32,87** seviyesindedir. Hesaplamalarınızda bu oranı veya kendi piyasa beklentinizi baz alabilirsiniz.")
     gelecek_fiyat = 100 * ((1+elektrik_zam_beklentisi/100)**10)
     st.caption(f"ℹ️ **Simülasyon:** Seçtiğiniz senaryoya göre, bugün 100 TL olan birim enerji maliyeti 10 yıl sonra tahminen **{int(gelecek_fiyat)} TL** seviyesinde simüle edilir.")
 
@@ -135,9 +151,7 @@ if st.session_state.hesaplandi:
             uyari_mesaji = "✅ **Ekonomik Mod:** Sadece faturanız kadar kurulum hesapladık."
         else:
             kurulu_guc_kw = max_cati_guc_kw
-            # Uyarı mesajını duruma göre özelleştirelim
-            alan_adi = "Çatı" if kurulum_yeri == "Çatı Üzeri" else "Arazi"
-            uyari_mesaji = f"⚠️ **Kapasite Sınırı:** {alan_adi} alanınız ihtiyacın tamamını karşılamaya yetmiyor."
+            uyari_mesaji = f"⚠️ **Kapasite Sınırı:** {('Çatı' if kurulum_yeri == 'Çatı Üzeri' else 'Arazi')} alanınız ihtiyacın tamamını karşılamaya yetmiyor."
     else:
         kurulu_guc_kw = max_cati_guc_kw
         tahmini_yillik_uretim = kurulu_guc_kw * gunluk_isinim * 365 * sistem_verimi
@@ -155,11 +169,9 @@ if st.session_state.hesaplandi:
     yatirim_maliyeti_tl = kurulu_guc_kw * maliyet_usd_kw * dolar_kuru
     tahmini_panel_sayisi = max(1, int(kurulu_guc_kw / (panel_gucu_watt / 1000)))
     
-    # Çevresel
     co2_ton = (yillik_uretim_kwh * 0.5) / 1000
     agac_sayisi = int((yillik_uretim_kwh * 0.5) / 20)
 
-    # Kredi
     kredi_taksidi = 0
     if kredi_kullanimi:
         aylik_faiz = faiz_orani / 100
@@ -169,16 +181,12 @@ if st.session_state.hesaplandi:
     amortisman_yil = 0
     kasa_simulasyon = -yatirim_maliyeti_tl
     zam_carpani = 1 + (elektrik_zam_beklentisi / 100)
-    
-    # Nakit Akışı Verilerini Hazırlama
     nakit_akisi_listesi = []
     
     for i in range(1, 26):
         yillik_getiri_sim = (yillik_uretim_kwh * (0.995**i)) * (elektrik_birim_fiyat * (zam_carpani**i))
         gider_sim = 0
-        if i == 12:
-            gider_sim = yatirim_maliyeti_tl * 0.15
-        
+        if i == 12: gider_sim = yatirim_maliyeti_tl * 0.15
         kasa_simulasyon = kasa_simulasyon + yillik_getiri_sim - gider_sim
         nakit_akisi_listesi.append(kasa_simulasyon)
         
@@ -204,7 +212,6 @@ if st.session_state.hesaplandi:
     c3.metric("Aylık Ortalama Kazanç", f"{tr_fmt(aylik_ekonomik_fayda_tl)} TL", delta="Tasarruf")
     c4.metric("Amortisman (ROI)", f"{amortisman_yil:.1f} Yıl")
 
-    # ÇEVRESEL ETKİ
     st.markdown("---")
     st.subheader("🌍 Dünyaya Katkınız")
     ce1, ce2, ce3 = st.columns(3)
@@ -212,7 +219,6 @@ if st.session_state.hesaplandi:
     ce2.metric("☁️ Engellenen CO2", f"{co2_ton:.1f} Ton")
     ce3.metric("🚗 Araba Sürüşü", f"{tr_fmt(int(co2_ton * 5000))} km")
 
-    # GRAFİKLER
     st.markdown("---")
     tab1, tab2 = st.tabs(["📉 Finansal Tablo (Nakit Akışı)", "📅 Aylık Üretim (Mevsimsellik)"])
 
@@ -226,28 +232,16 @@ if st.session_state.hesaplandi:
                 "Yıl": list(range(1, 22)), 
                 "Toplam Birikimli Kazanç (TL)": nakit_akisi_listesi[:21]
             })
-            
             df_chart["Toplam Birikimli Kazanç (TL)"] = df_chart["Toplam Birikimli Kazanç (TL)"].astype(int)
             df_chart["Kasa Durumu"] = df_chart["Toplam Birikimli Kazanç (TL)"].apply(tr_fmt)
             
-            chart_fin = alt.Chart(df_chart).mark_area(
-                color="#FFD700", line={'color':'darkgoldenrod'}, opacity=0.6
-            ).encode(
+            chart_fin = alt.Chart(df_chart).mark_area(color="#FFD700", line={'color':'darkgoldenrod'}, opacity=0.6).encode(
                 x=alt.X('Yıl:O', title='Yıl'),
                 y=alt.Y('Toplam Birikimli Kazanç (TL):Q', title='Toplam Birikimli Kazanç (TL)'),
                 tooltip=['Yıl', alt.Tooltip('Kasa Durumu', title='Kasa (TL)')]
             ).interactive()
-            
             st.altair_chart(chart_fin, use_container_width=True)
-            
-            # İNVERTER BİLGİ NOTU (EXPANDER)
-            with st.expander("ℹ️ 12. Yıldaki Gider (Grafik Kırılması) Nedir?"):
-                st.write(f"""
-                **Mühendislik Notu:** Güneş panelleri fiziksel olarak dayanıklıdır ve 25-30 yıl enerji üretir. 
-                Ancak sistemin elektriği çeviren beyni olan **Inverter (Evirici)**, elektronik bir cihazdır ve ortalama ömrü 10-12 yıldır.
-                
-                Bu nedenle dürüst bir fizibilite hesabı için, 12. yılda bugünkü parayla yaklaşık **{tr_fmt(inverter_maliyeti)} TL** tutarında bir inverter yenileme masrafı bütçeye otomatik olarak eklenmiştir.
-                """)
+            st.caption(f"ℹ️ **Not:** 12. yılda İnverter değişimi ({tr_fmt(inverter_maliyeti)} TL) düşülmüştür.")
         
         with col_f2:
             st.write(f"**⚡ Enflasyon Senaryosu:** Yıllık %{elektrik_zam_beklentisi}")
@@ -258,7 +252,7 @@ if st.session_state.hesaplandi:
                 if fark > 0: st.success(f"Cebinize **{tr_fmt(fark)} TL** kalıyor!")
                 else: st.error(f"Cebinizden **{tr_fmt(abs(fark))} TL** çıkıyor.")
             else:
-                st.success("Nakit alımda faiz yükü oluşmaz, sistem kendini daha hızlı amorti eder.")
+                st.success("Nakit alımda sistem kendini daha hızlı amorti eder.")
 
     with tab2:
         st.subheader("📅 Aylık Üretim Tahmini")
@@ -272,9 +266,9 @@ if st.session_state.hesaplandi:
             x=alt.X('Ay', sort=aylar_listesi), y='Üretim (kWh)', tooltip=['Ay', 'Üretim (kWh)']
         )
         st.altair_chart(chart, use_container_width=True)
-        st.info("Not: Bu grafik Türkiye ortalaması mevsimsellik verilerine dayanır. Kışın üretim düşer, yazın artar.")
+        st.info("Not: Bu grafik Türkiye ortalaması mevsimsellik verilerine dayanır.")
 
-    # --- İLETİŞİM FORMU ---
+    # --- İLETİŞİM FORMU (VERİTABANINA BAĞLI) ---
     st.markdown("---")
     st.subheader("📞 Ücretsiz Keşif ve Teklif Formu")
     with st.form("iletisim_formu"):
@@ -283,11 +277,17 @@ if st.session_state.hesaplandi:
             ad_soyad = st.text_input("Adınız Soyadınız")
             telefon = st.text_input("Telefon (5XX ...)")
         with c_i2:
-            email = st.text_input("E-posta")
+            email = st.text_input("E-posta Adresiniz (Opsiyonel)")
             notlar = st.text_area("Notlarınız")
-        if st.form_submit_button("✅ GÖNDER", type="primary"):
+        
+        submit_btn = st.form_submit_button("✅ GÖNDER", type="primary")
+        
+        if submit_btn:
             if ad_soyad and telefon:
-                st.success(f"Teşekkürler {ad_soyad}, talebiniz alındı!")
-                st.balloons()
+                # Veritabanına Kaydetme İşlemi
+                kayit_basarili = veritabanina_kaydet(ad_soyad, telefon, email, sehir, str(fatura), notlar)
+                if kayit_basarili:
+                    st.success(f"Teşekkürler {ad_soyad}! Bilgileriniz güvenle alındı. En kısa sürede {telefon} üzerinden dönüş yapılacaktır.")
+                    st.balloons()
             else:
-                st.error("Ad ve Telefon zorunludur.")
+                st.error("Lütfen Ad Soyad ve Telefon alanlarını doldurunuz.")
