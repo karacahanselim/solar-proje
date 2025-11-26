@@ -161,7 +161,7 @@ if st.session_state.hesaplandi:
     
     # 3. SİSTEM BOYUTLANDIRMA
     # Hedef: Tüketimi karşılamak (+%20 marj)
-    hedef_uretim_icin_guc = (yillik_tuketim_kwh * 1.2) / (gunluk_isinim * 365 * 0.85)
+    hedef_guc = (yillik_tuketim_kwh * 1.2) / (gunluk_isinim * 365 * 0.85) # Değişken ismi düzeltildi
     max_cati_guc = cati_alani * verim_katsayisi
     
     # Mantık: Çatıyı aşamazsın. Off-Grid ise ihtiyacı aşma (akü maliyeti).
