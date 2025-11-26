@@ -73,14 +73,19 @@ with col_form1:
         aku_tipi = "Yok" # On-Grid'de akü yok varsayıyoruz
 
     st.markdown("#### 📊 Tüketim Verisi")
-    # 2. GİRİŞ YÖNTEMİ (YENİ)
-    hesap_yontemi = st.radio("Nasıl Hesaplayalım?", ["Aylık Fatura Tutarı (TL)", "Aylık Tüketim Miktarı (kWh)"], horizontal=True)
+    # 2. GİRİŞ YÖNTEMİ (GÜNCELLENDİ: GÜNLÜK KWH EKLENDİ)
+    hesap_yontemi = st.radio("Nasıl Hesaplayalım?", 
+                             ["Aylık Fatura Tutarı (TL)", "Aylık Toplam Tüketim (kWh)", "Günlük Ortalama Tüketim (kWh/gün)"], 
+                             horizontal=False)
     
     if "TL" in hesap_yontemi:
         girdi_deger = st.number_input("Aylık Ortalama Fatura (TL)", value=1000, step=50)
         elektrik_birim_fiyat = 2.60 # Varsayılan
+    elif "Günlük" in hesap_yontemi:
+        girdi_deger = st.number_input("Günlük Ortalama Tüketim (kWh)", value=15.0, step=0.5, help="Faturanızda 'Günlük Ort.' veya 'Ortalama Tüketim' olarak yazar.")
+        elektrik_birim_fiyat = 2.60
     else:
-        girdi_deger = st.number_input("Aylık Tüketim (kWh)", value=400, step=50, help="Faturanızın üzerindeki 'Tüketim Endeksi' kısmında yazar. En doğru hesap budur.")
+        girdi_deger = st.number_input("Aylık Toplam Tüketim (kWh)", value=450, step=50, help="Faturanızdaki 'Toplam Tüketim' veya 'Endeks Farkı' kısmıdır.")
         elektrik_birim_fiyat = 2.60 # Tasarruf hesabı için yine lazım
 
 with col_form2:
@@ -116,11 +121,13 @@ else:
 # --- MÜHENDİSLİK HESAPLAMALARI ---
 if st.session_state.hesaplandi:
     
-    # 1. TÜKETİMİ KWH'E ÇEVİRME (HOCANIN İSTEDİĞİ KISIM)
+    # 1. TÜKETİMİ KWH'E ÇEVİRME (GÜNCELLENDİ)
     if "TL" in hesap_yontemi:
         aylik_tuketim_kwh = girdi_deger / elektrik_birim_fiyat
+    elif "Günlük" in hesap_yontemi:
+        aylik_tuketim_kwh = girdi_deger * 30 # Günlük tüketimi 30 ile çarpıp aylık buluyoruz
     else:
-        aylik_tuketim_kwh = girdi_deger # Zaten kWh girildi
+        aylik_tuketim_kwh = girdi_deger # Zaten aylık kWh girildi
     
     yillik_tuketim_kwh = aylik_tuketim_kwh * 12
     
