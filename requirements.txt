@@ -4,3 +4,4 @@ numpy
 altair
 gspread
 oauth2client
+requests
