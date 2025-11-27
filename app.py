@@ -289,7 +289,7 @@ if st.session_state.hesaplandi:
             color=alt.value("black")
         )
         st.altair_chart(pie + text, use_container_width=True)
-        st.info("Bu grafik, sadece paneli değil; işçilik, proje, kablolama ve montaj gibi **gizli giderleri** de içerdiğini gösterir.")
+        st.info("Bu grafik, sadece paneli değil; işçilik, proje, kabloma ve montaj gibi **gizli giderleri** de içerdiğini gösterir.")
 
     with t3:
         df_m = pd.DataFrame({"Ay": ["Oca","Şub","Mar","Nis","May","Haz","Tem","Ağu","Eyl","Eki","Kas","Ara"], "Üretim": aylik_uretim})
@@ -312,3 +312,4 @@ if st.session_state.hesaplandi:
                     st.balloons()
                 else: st.error("Hata")
             else: st.warning("Ad ve Telefon giriniz.")
+
