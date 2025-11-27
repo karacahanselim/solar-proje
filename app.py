@@ -20,13 +20,9 @@ def tr_fmt(sayi):
     if sayi is None: return "0"
     return f"{int(sayi):,.0f}".replace(",", ".")
 
-# --- PVGIS API FONKSİYONU (YENİ) ---
-@st.cache_data(ttl=3600) # Verileri 1 saat önbellekte tut ki hızlansın
+# --- PVGIS API FONKSİYONU ---
+@st.cache_data(ttl=3600) 
 def get_pvgis_data(lat, lon, peak_power, loss, angle=35, aspect=0):
-    """
-    Avrupa Komisyonu PVGIS API'sinden yıllık üretim verisini çeker.
-    lat: Enlem, lon: Boylam, peak_power: Kurulu Güç (kW), loss: Kayıp (%), angle: Eğim, aspect: Yön (Azimut)
-    """
     try:
         url = "https://re.jrc.ec.europa.eu/api/v5_2/PVcalc"
         params = {
@@ -34,21 +30,17 @@ def get_pvgis_data(lat, lon, peak_power, loss, angle=35, aspect=0):
             'lon': lon,
             'peakpower': peak_power,
             'loss': loss,
-            'angle': angle,   # Çatı eğimi (varsayılan 35)
-            'aspect': aspect, # Cephe yönü (0:Güney, -90:Doğu, 90:Batı)
+            'angle': angle,   
+            'aspect': aspect, 
             'outputformat': 'json'
         }
         response = requests.get(url, params=params, timeout=10)
         
         if response.status_code == 200:
             data = response.json()
-            # Yıllık toplam üretim (E_y) ve Aylık verileri al
             yearly_production = data['outputs']['totals']['fixed']['E_y']
             monthly_data = data['outputs']['monthly']['fixed']
-            
-            # Aylık dağılımı çek (Ocak'tan Aralık'a)
             monthly_production = [m['E_m'] for m in monthly_data]
-            
             return yearly_production, monthly_production
         else:
             return None, None
@@ -57,7 +49,7 @@ def get_pvgis_data(lat, lon, peak_power, loss, angle=35, aspect=0):
         return None, None
 
 # --- VERİTABANI KAYIT FONKSİYONU ---
-def veritabanina_kaydet(ad, firma, tel, email, sehir, sistem_tipi, tuketim_bilgisi, notlar):
+def veritabanina_kaydet(ad, firma, tel, email, sehir, ilce, sistem_tipi, tuketim_bilgisi, notlar):
     try:
         try:
             json_icerik = st.secrets["gcp_service_account"]["json_file"]
@@ -70,7 +62,9 @@ def veritabanina_kaydet(ad, firma, tel, email, sehir, sistem_tipi, tuketim_bilgi
         client = gspread.authorize(creds)
         sheet = client.open("SolarMusteriler").sheet1
         tarih = datetime.now().strftime("%Y-%m-%d %H:%M")
-        sheet.append_row([tarih, ad, firma, tel, email, sehir, sistem_tipi, tuketim_bilgisi, notlar])
+        # İlçe bilgisini de kaydediyoruz
+        konum_tam = f"{sehir} / {ilce}"
+        sheet.append_row([tarih, ad, firma, tel, email, konum_tam, sistem_tipi, tuketim_bilgisi, notlar])
         return True
     except:
         return False
@@ -83,7 +77,7 @@ with c_header2:
     st.title("☀️ SolarVizyon | Mühendislik Tabanlı GES Analizi")
     st.markdown("""
     ### Bilimsel Veri, Gerçekçi Sonuçlar 📐
-    **Avrupa Komisyonu PVGIS uydularından** anlık alınan verilerle, bölgenize özel en hassas güneş enerjisi üretim analizini yapıyoruz.
+    **Avrupa Komisyonu PVGIS uydularından** anlık alınan verilerle, bölgenize ve ilçenize özel en hassas güneş enerjisi üretim analizini yapıyoruz.
     """)
 
 st.markdown("---")
@@ -96,15 +90,76 @@ col_form1, col_form2 = st.columns(2, gap="medium")
 with col_form1:
     st.markdown("#### 🏠 Lokasyon ve Sistem Tipi")
     
-    # ŞEHİR KOORDİNATLARI (PVGIS İÇİN GEREKLİ)
-    sehirler_coords = {
-        "İstanbul": (41.0082, 28.9784), "Ankara": (39.9334, 32.8597), "İzmir": (38.4192, 27.1287),
-        "Antalya": (36.8969, 30.7133), "Kayseri": (38.7312, 35.4787), "Konya": (37.8667, 32.4833),
-        "Gaziantep": (37.0662, 37.3833), "Van": (38.4891, 43.4089), "Adana": (37.0000, 35.3213),
-        "Trabzon": (41.0027, 39.7168)
+    # ŞEHİR VE İLÇE VERİTABANI (KOORDİNATLAR)
+    sehir_ilce_coords = {
+        "Kayseri": {
+            "Merkez (Melikgazi/Kocasinan)": (38.7312, 35.4787),
+            "Talas": (38.6917, 35.5550),
+            "Develi": (38.3922, 35.4908),
+            "Hacılar": (38.6417, 35.4500),
+            "İncesu": (38.6278, 35.1778),
+            "Bünyan": (38.8444, 35.8611),
+            "Yahyalı": (38.1000, 35.3667)
+        },
+        "İstanbul": {
+            "Avrupa Yakası (Genel)": (41.0082, 28.9784),
+            "Anadolu Yakası (Genel)": (40.9833, 29.1167),
+            "Silivri": (41.0736, 28.2472),
+            "Şile": (41.1744, 29.6125),
+            "Çatalca": (41.1436, 28.4600)
+        },
+        "Ankara": {
+            "Merkez (Çankaya/Keçiören)": (39.9334, 32.8597),
+            "Gölbaşı": (39.7889, 32.8028),
+            "Polatlı": (39.5756, 32.1461),
+            "Beypazarı": (40.1686, 31.9203),
+            "Sincan": (39.9600, 32.5800)
+        },
+        "İzmir": {
+            "Merkez (Konak/Bornova)": (38.4192, 27.1287),
+            "Çeşme": (38.3233, 26.3042),
+            "Urla": (38.3228, 26.7625),
+            "Bergama": (39.1217, 27.1806),
+            "Ödemiş": (38.2289, 27.9769)
+        },
+        "Antalya": {
+            "Merkez (Muratpaşa)": (36.8969, 30.7133),
+            "Alanya": (36.5444, 31.9956),
+            "Manavgat": (36.7867, 31.4422),
+            "Kaş": (36.2000, 29.6333),
+            "Kemer": (36.6019, 30.5606)
+        },
+        "Konya": {
+            "Merkez (Selçuklu)": (37.8667, 32.4833),
+            "Ereğli": (37.5117, 34.0536),
+            "Akşehir": (38.3564, 31.4164),
+            "Beyşehir": (37.6778, 31.7250)
+        },
+        "Gaziantep": {
+            "Merkez (Şehitkamil)": (37.0662, 37.3833),
+            "Nizip": (37.0100, 37.7950),
+            "İslahiye": (37.0261, 36.6306)
+        },
+        "Van": {
+            "Merkez (İpekyolu)": (38.4891, 43.4089),
+            "Erciş": (39.0283, 43.3581),
+            "Edremit": (38.4250, 43.2583)
+        },
+        "Adana": {
+            "Merkez (Seyhan)": (37.0000, 35.3213),
+            "Ceyhan": (37.0289, 35.8158),
+            "Kozan": (37.4556, 35.8156)
+        },
+        "Trabzon": {
+            "Merkez (Ortahisar)": (41.0027, 39.7168),
+            "Akçaabat": (41.0208, 39.5703),
+            "Of": (40.9469, 40.2706)
+        }
     }
     
-    sehir = st.selectbox("📍 Şehir Seçiniz", list(sehirler_coords.keys()))
+    sehir = st.selectbox("📍 İl Seçiniz", list(sehir_ilce_coords.keys()))
+    # Dinamik ilçe listesi (Seçilen ile göre gelir)
+    ilce = st.selectbox("📍 İlçe Seçiniz", list(sehir_ilce_coords[sehir].keys()))
     
     sistem_tipi = st.radio("Sistem Tipi Nedir?", 
              ["On-Grid (Şebeke Bağlantılı)", "Off-Grid (Akü Depolamalı / Bağ Evi)"],
@@ -138,7 +193,6 @@ with col_form2:
     cati_alani = st.number_input(alan_label, value=80, help="Gölge düşmeyen, kullanılabilir net alan.")
     
     # PVGIS İÇİN YÖN SEÇİMİ (AZİMUT)
-    # Güney=0, Doğu=-90, Batı=90 (PVGIS Standardı)
     yon_secimi_ui = st.selectbox("🧭 Alanın Cephesi", ["Güney (En İyi)", "Güney-Doğu", "Güney-Batı", "Doğu", "Batı", "Kuzey"])
     
     yon_to_azimuth = {
@@ -154,7 +208,7 @@ with col_form2:
     panel_tipi = st.radio("Panel Teknolojisi", ["Standart Panel (Poly)", "Premium Panel (Mono Perc)"], horizontal=True)
     
     st.markdown("#### 📈 Ekonomik Parametreler")
-    elektrik_zam_beklentisi = st.slider("Yıllık Enerji Fiyat Artış Beklentisi (%)", 0, 100, 40)
+    elektrik_zam_beklentisi = st.slider("Yıllık Enerji Fiyat Artış Beklentisi (%)", 0, 100, 35) # Varsayılanı 35 yaptık (TÜİK'e yakın)
     st.info("💡 **Referans Bilgi:** Ekim 2025 TÜİK TÜFE: **%32,87**")
 
 # --- GELİŞMİŞ AYARLAR ---
@@ -192,15 +246,12 @@ if st.session_state.hesaplandi:
     yillik_tuketim_kwh = aylik_tuketim_kwh * 12
     
     # 2. SİSTEM BOYUTLANDIRMA (TAHMİNİ)
-    # Önce yaklaşık bir güç belirleyelim, sonra PVGIS'e soracağız
     verim_katsayisi = 0.21 if "Premium" in panel_tipi else 0.17
     panel_gucu_watt = 550 if "Premium" in panel_tipi else 400
-    
     max_cati_guc_kw = cati_alani * verim_katsayisi
     
-    # İhtiyaca göre güç belirleme (Basit yaklaşımla başlatıp PVGIS ile düzelteceğiz)
-    # Türkiye ortalaması ile kabaca bir hedef güç bulalım
-    hedef_guc_kw = (yillik_tuketim_kwh * 1.1) / (4.0 * 365 * 0.85) # Yaklaşık
+    # İhtiyaç belirleme
+    hedef_guc_kw = (yillik_tuketim_kwh * 1.1) / (4.0 * 365 * 0.85) 
     
     if "Off-Grid" in sistem_tipi:
         kurulu_guc_kw = min(hedef_guc_kw, max_cati_guc_kw)
@@ -209,15 +260,15 @@ if st.session_state.hesaplandi:
         kurulu_guc_kw = min(hedef_guc_kw, max_cati_guc_kw)
         uyari_mesaji = "ℹ️ Alanın tamamını kullandık." if max_cati_guc_kw < hedef_guc_kw else "ℹ️ İhtiyacınız kadar kurulum hesaplandı."
 
-    # Panel Sayısını Tam Sayıya Yuvarla
     panel_sayisi = max(1, int((kurulu_guc_kw * 1000) / panel_gucu_watt))
     gercek_kurulu_guc_kw = (panel_sayisi * panel_gucu_watt) / 1000
     
-    # 3. PVGIS API'DEN GERÇEK ÜRETİMİ ÇEKME 📡
-    lat, lon = sehirler_coords[sehir]
-    sistem_kaybi = 14 # % (Kablo, inverter, sıcaklık kayıpları)
+    # 3. PVGIS API'DEN GERÇEK ÜRETİMİ ÇEKME (İLÇE KOORDİNATI İLE) 📡
+    # Artık ilin değil, İLÇENİN koordinatını kullanıyoruz
+    lat, lon = sehir_ilce_coords[sehir][ilce]
+    sistem_kaybi = 14 
     
-    with st.spinner(f'{sehir} için uydu verileri çekiliyor (PVGIS)...'):
+    with st.spinner(f'{sehir} / {ilce} koordinatları için uydu verileri çekiliyor (PVGIS)...'):
         yillik_uretim_pvgis, aylik_uretim_pvgis = get_pvgis_data(lat, lon, gercek_kurulu_guc_kw, sistem_kaybi, angle=30, aspect=azimuth_val)
     
     if yillik_uretim_pvgis is None:
@@ -226,7 +277,6 @@ if st.session_state.hesaplandi:
         
     # 4. MALİYET ANALİZİ
     baz_maliyet_usd = 750 if "Premium" in panel_tipi else 600
-    # Ölçek Ekonomisi
     if gercek_kurulu_guc_kw < 5: birim_maliyet_usd = baz_maliyet_usd * 1.3
     elif gercek_kurulu_guc_kw < 10: birim_maliyet_usd = baz_maliyet_usd * 1.1
     else: birim_maliyet_usd = baz_maliyet_usd
@@ -247,7 +297,6 @@ if st.session_state.hesaplandi:
     yatirim_maliyeti_tl = toplam_yatirim_usd * dolar_kuru
     
     # 5. FİNANSAL GETİRİ
-    # PVGIS'den gelen yıllık üretimi kullanıyoruz artık!
     aylik_ortalama_uretim_tl = (yillik_uretim_pvgis / 12) * elektrik_birim_fiyat
 
     # 6. DİNAMİK ROI
@@ -280,8 +329,8 @@ if st.session_state.hesaplandi:
 
     # --- ÇIKTI EKRANI ---
     st.divider()
-    st.subheader(f"📍 {sehir} Analiz Raporu")
-    st.success("✅ **Veriler Doğrulandı:** Hesaplamalar, Avrupa Komisyonu PVGIS uydusundan alınan gerçek ışınım verilerine dayanmaktadır.")
+    st.subheader(f"📍 {sehir} / {ilce} Analiz Raporu")
+    st.success(f"✅ **Konum Doğrulandı:** {ilce} ilçesinin koordinatlarına ({lat}, {lon}) göre PVGIS uydusundan gerçek ışınım verileri çekildi.")
     st.info(sistem_notu)
     if uyari_mesaji: st.markdown(uyari_mesaji)
     
@@ -323,7 +372,7 @@ if st.session_state.hesaplandi:
             x=alt.X('Ay', sort=aylar), y='Üretim (kWh)', tooltip=['Ay', 'Üretim (kWh)']
         )
         st.altair_chart(chart_bar, use_container_width=True)
-        st.info("Bu grafik, seçtiğiniz şehrin coğrafi konumuna ve güneş açısına göre PVGIS uydusundan alınan **gerçek üretim tahminidir.**")
+        st.info("Bu grafik, seçtiğiniz ilçenin coğrafi konumuna ve güneş açısına göre PVGIS uydusundan alınan **gerçek üretim tahminidir.**")
 
     # --- İLETİŞİM FORMU ---
     st.markdown("---")
@@ -338,7 +387,8 @@ if st.session_state.hesaplandi:
         
         if st.form_submit_button("✅ ÜCRETSİZ TEKLİF İSTE", type="primary"):
             if ad and tel:
-                if veritabanina_kaydet(ad, firma, tel, email, sehir, sistem_tipi, f"{girdi_deger}", notlar):
+                # İlçe bilgisini de gönderiyoruz
+                if veritabanina_kaydet(ad, firma, tel, email, sehir, ilce, sistem_tipi, f"{girdi_deger}", notlar):
                     st.success("Talebiniz başarıyla alındı!")
                     st.balloons()
                 else:
